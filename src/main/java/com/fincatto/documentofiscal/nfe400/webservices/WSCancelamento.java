@@ -44,7 +44,7 @@ class WSCancelamento implements DFLog {
     NFCancelamentoRetornoDados cancelaNota(final String chaveAcesso, final String numeroProtocolo, final String motivo, final boolean proxy, final String host, final String porta, final int numeroSequencial) throws Exception {
         final String cancelamentoNotaXML = this.gerarDadosCancelamento(chaveAcesso, numeroProtocolo, motivo, proxy, host, porta, numeroSequencial).toString();
         final String xmlAssinado = new DFAssinaturaDigital(this.config).assinarDocumento(cancelamentoNotaXML);
-        final OMElement omElementResult = this.efetuaCancelamento(xmlAssinado, chaveAcesso, proxy, host, porta);
+        final OMElement omElementResult = this.efetuaCancelamento(xmlAssinado, chaveAcesso);
         NFEnviaEventoRetorno retorno = this.config.getPersister().read(NFEnviaEventoRetorno.class, omElementResult.toString());
 
         NFEnviaEventoCancelamento eventoAssinado = new DFPersister().read(NFEnviaEventoCancelamento.class, xmlAssinado);
