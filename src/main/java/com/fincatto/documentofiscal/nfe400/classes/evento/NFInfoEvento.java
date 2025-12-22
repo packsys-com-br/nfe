@@ -134,8 +134,8 @@ public class NFInfoEvento extends DFBase {
         return this.dadosEvento;
     }
 
-    public void setDadosEvento(final NFTipoEvento cartaCorrecao) {
-        this.dadosEvento = cartaCorrecao;
+    public void setDadosEvento(final NFTipoEvento evento) {
+        this.dadosEvento = evento;
     }
 
     public DFUnidadeFederativa getOrgao() {

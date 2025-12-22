@@ -7,11 +7,21 @@ import com.fincatto.documentofiscal.nfe.classes.distribuicao.NFDistribuicaoIntRe
 import com.fincatto.documentofiscal.nfe.webservices.distribuicao.WSDistribuicaoNFe;
 import com.fincatto.documentofiscal.nfe400.classes.cadastro.NFRetornoConsultaCadastro;
 import com.fincatto.documentofiscal.nfe400.classes.evento.NFEnviaEventoRetorno;
+import com.fincatto.documentofiscal.nfe400.classes.evento.NFEventoTipoAutor;
 import com.fincatto.documentofiscal.nfe400.classes.evento.cartacorrecao.NFProtocoloEventoCartaCorrecao;
+import com.fincatto.documentofiscal.nfe400.classes.evento.alczfmimportacao.NFDetGrupoConsumoZFM;
+import com.fincatto.documentofiscal.nfe400.classes.evento.consumopessoal.NFDetGrupoConsumo;
+import com.fincatto.documentofiscal.nfe400.classes.evento.apropriacaocomb.NFDetGrupoConsumoCombustivel;
+import com.fincatto.documentofiscal.nfe400.classes.evento.apropriacaobens.NFDetGrupoCredito;
+import com.fincatto.documentofiscal.nfe400.classes.evento.apropriacaocredito.NFDetGrupoCreditoPresumido;
+import com.fincatto.documentofiscal.nfe400.classes.evento.imobilizacao.NFDetGrupoImobilizacao;
+import com.fincatto.documentofiscal.nfe400.classes.evento.naofornecido.NFDetGrupoItemNaoFornecido;
+import com.fincatto.documentofiscal.nfe400.classes.evento.roubo.NFDetGrupoPerecimento;
 import com.fincatto.documentofiscal.nfe400.classes.evento.epec.NFEnviaEventoEpecRetorno;
 import com.fincatto.documentofiscal.nfe400.classes.evento.inutilizacao.NFRetornoEventoInutilizacao;
 import com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFProtocoloEventoManifestacaoDestinatario;
 import com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario;
+import com.fincatto.documentofiscal.nfe400.classes.evento.roubo.NFDetGrupoPerecimentoFornecedor;
 import com.fincatto.documentofiscal.nfe400.classes.lote.consulta.NFLoteConsultaRetorno;
 import com.fincatto.documentofiscal.nfe400.classes.lote.envio.*;
 import com.fincatto.documentofiscal.nfe400.classes.nota.consulta.NFNotaConsultaRetorno;
@@ -24,6 +34,8 @@ import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
+import java.time.LocalDate;
+import java.util.List;
 
 public class WSFacade {
 
@@ -38,6 +50,19 @@ public class WSFacade {
     private final WSManifestacaoDestinatario wSManifestacaoDestinatario;
     private final WSDistribuicaoNFe wSDistribuicaoNFe;
     private final WSEpec wsEpec;
+    private final WSAtualizacaoDataPrevisaoEntrega wsAtualizacaoDataPrevisaoEntrega;
+    private final WSAceiteDebitoApuracao wsAceiteDebitoAPuracao;
+    private final WSCancelametoEvento wsCancelametoEvento;
+    private final WSInfoEfetPagIntegral wsInfoEfetPagIntegral;
+    private final WSSolicitacaoApropriacaoCreditoPresumido wsSolicitacaoApropriacaoCreditoPresumido;
+    private final WSSolicitacaoApropriacaoCreditoCombustivel wsSolicitacaoApropriacaoCreditoCombustivel;
+    private final WSRouboTransporteAdquirente wsRouboTransporteAdquirente;
+    private final WSSolicitacaoApropriacaoCreditoBensAtdAdquirinte wsSolicitacaoApropriacaoCreditoBensAtdAdquirinte;
+    private final WSRouboTransporteFornecedor wsRouboTransporteFornecedor;
+    private final WSNaoFornecimentoPagamentoAntecipado wsNaoFornecimentoPagamentoAntecipado;
+    private final WSDestinacaoItemConsumoPessoal wsDestinacaoItemConsumoPessoal;
+    private final WSImobilizacaoItem wsImobilizacaoItem;
+    private final WSImportacaoALCZFMNaoConvertidaIsencao wsImportacaoALCZFMNaoConvertidaIsencao;
 
     public WSFacade(final NFeConfig config) throws KeyManagementException, UnrecoverableKeyException, KeyStoreException, NoSuchAlgorithmException {
         Protocol.registerProtocol("https", new Protocol("https", new DFSocketFactory(config), 443));
@@ -54,6 +79,19 @@ public class WSFacade {
         this.wSManifestacaoDestinatario = new WSManifestacaoDestinatario(config);
         this.wSDistribuicaoNFe = new WSDistribuicaoNFe(config);
         this.wsEpec = new WSEpec(config);
+        this.wsAtualizacaoDataPrevisaoEntrega = new WSAtualizacaoDataPrevisaoEntrega(config);
+        this.wsAceiteDebitoAPuracao = new WSAceiteDebitoApuracao(config);
+        this.wsCancelametoEvento = new WSCancelametoEvento(config);
+        this.wsInfoEfetPagIntegral = new WSInfoEfetPagIntegral(config);
+        this.wsSolicitacaoApropriacaoCreditoPresumido = new WSSolicitacaoApropriacaoCreditoPresumido(config);
+        this.wsSolicitacaoApropriacaoCreditoCombustivel = new WSSolicitacaoApropriacaoCreditoCombustivel(config);
+        this.wsRouboTransporteAdquirente = new WSRouboTransporteAdquirente(config);
+        this.wsSolicitacaoApropriacaoCreditoBensAtdAdquirinte = new WSSolicitacaoApropriacaoCreditoBensAtdAdquirinte(config);
+        this.wsRouboTransporteFornecedor = new WSRouboTransporteFornecedor(config);
+        this.wsNaoFornecimentoPagamentoAntecipado = new WSNaoFornecimentoPagamentoAntecipado(config);
+        this.wsDestinacaoItemConsumoPessoal = new WSDestinacaoItemConsumoPessoal(config);
+        this.wsImobilizacaoItem = new WSImobilizacaoItem(config);
+        this.wsImportacaoALCZFMNaoConvertidaIsencao = new WSImportacaoALCZFMNaoConvertidaIsencao(config);
     }
 
     /**
@@ -172,17 +210,7 @@ public class WSFacade {
      * @throws Exception caso nao consiga gerar o xml ou problema de conexao com
      * o sefaz
      */
-    public NFEnviaEventoRetorno corrigeNota(final String chaveDeAcesso, final String textoCorrecao, final int numeroSequencialEvento,
-            final boolean proxy, final String host, final String porta) throws Exception {
-        System.out.println("=====================================================================================");
-        System.out.println("*** PASSO 5 - WSFacade.java (FINCATTO) - 1. CORRECAO DA NOTA ***");
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Chave de Acesso:  " + chaveDeAcesso);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Protocolo: " + textoCorrecao);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Motivo: " + numeroSequencialEvento);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Proxy: " + proxy);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Host: " + host);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Porta: " + porta);
-        System.out.println("=====================================================================================");
+    public NFEnviaEventoRetorno corrigeNota(final String chaveDeAcesso, final String textoCorrecao, final int numeroSequencialEvento, final boolean proxy, final String host, final String porta) throws Exception {
         return this.wsCartaCorrecao.corrigeNota(chaveDeAcesso, textoCorrecao, numeroSequencialEvento, proxy, host, porta);
     }
 
@@ -235,18 +263,23 @@ public class WSFacade {
      * @throws Exception caso nao consiga gerar o xml ou problema de conexao com
      * o sefaz
      */
-//    public NFEnviaEventoRetorno cancelaNota(final String chave, final String numeroProtocolo, final String motivo) throws Exception {
-    public NFEnviaEventoRetorno cancelaNota(final String chave, final String numeroProtocolo, final String motivo, final boolean proxy, final String host, final String porta) throws Exception {
-        System.out.println("=====================================================================================");
-        System.out.println("*** PASSO 5 - WSFacade.java (FINCATTO) - 1. CANCELAMENTO DA NOTA ***");
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Chave de Acesso:  " + chave);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Protocolo: " + numeroProtocolo);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Motivo: " + motivo);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Proxy: " + proxy);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Host: " + host);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNota - Porta: " + porta);
-        System.out.println("=====================================================================================");
-        return this.wsCancelamento.cancelaNota(chave, numeroProtocolo, motivo, proxy, host, porta);
+    public NFCancelamentoRetornoDados cancelaNota(final String chave, final String numeroProtocolo, final String motivo, final boolean proxy, final String host, final String porta) throws Exception {
+        return this.wsCancelamento.cancelaNota(chave, numeroProtocolo, motivo, proxy, host, porta, 1);
+    }
+
+    /**
+     * Faz o cancelamento da nota. Com opção de passar o numero sequencial do evento
+     *
+     * @param chave chave de acesso da nota
+     * @param numeroProtocolo numero do protocolo da nota
+     * @param motivo motivo do cancelamento
+     * @param numeroSequencial numero sequencial do evento informado
+     * @return dados do cancelamento da nota retornado pelo webservice
+     * @throws Exception caso nao consiga gerar o xml ou problema de conexao com
+     * o sefaz
+     */
+    public NFCancelamentoRetornoDados cancelaNota(final String chave, final String numeroProtocolo, final String motivo, final boolean proxy, final String host, final String porta,final int numeroSequencial) throws Exception {
+        return this.wsCancelamento.cancelaNota(chave, numeroProtocolo, motivo, proxy, host, porta, numeroSequencial);
     }
 
     /**
@@ -259,16 +292,8 @@ public class WSFacade {
      * @throws Exception caso nao consiga gerar o xml ou problema de conexao com
      * o sefaz
      */
-//    public NFEnviaEventoRetorno cancelaNotaAssinada(final String chave, final String eventoAssinadoXml) throws Exception {
-    public NFEnviaEventoRetorno cancelaNotaAssinada(final String chave, final String eventoAssinadoXml, final boolean proxy, final String host, final String porta) throws Exception {
-        System.out.println("=====================================================================================");
-        System.out.println("*** PASSO 5 - WSFacade.java (FINCATTO) - 2. CANCELAMENTO DA NOTA ***");
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNotaAssinada - Chave de Acesso:  " + chave);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNotaAssinada - Protocolo: " + eventoAssinadoXml);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNotaAssinada - Proxy: " + proxy);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNotaAssinada - Host: " + host);
-        System.out.println("*** 1.WsFacade.java - fincatto/documentofiscal/nfe400/webservices/WSFacade.java - NF-e - NFEnviaEventoRetorno cancelaNotaAssinada - Porta: " + porta);
-        return this.wsCancelamento.cancelaNotaAssinada(chave, eventoAssinadoXml, proxy, host, porta);
+    public NFEnviaEventoRetorno cancelaNotaAssinada(final String chave, final String eventoAssinadoXml) throws Exception {
+        return this.wsCancelamento.cancelaNotaAssinada(chave, eventoAssinadoXml);
     }
     
     /**
@@ -282,9 +307,8 @@ public class WSFacade {
      * @throws Exception caso nao consiga gerar o xml ou problema de conexao com
      * o sefaz
      */
-//    public NFEnviaEventoRetorno cancelaNotaPorSubstituicao(final String chave, final String numeroProtocolo, final String motivo, final String versaoAplicativoAutorizador, final String chaveSubstituta) throws Exception {
-    public NFEnviaEventoRetorno cancelaNotaPorSubstituicao(final String chaveAcesso, final String numeroProtocolo, final String motivo, final boolean proxy, final String host, final String porta, final String versaoAplicativoAutorizador, final String chaveSubstituta) throws Exception {
-        return this.wsCancelamento.cancelaNotaPorSubstituicao(chaveAcesso, numeroProtocolo, motivo, proxy, host, porta, versaoAplicativoAutorizador, chaveSubstituta);
+    public NFEnviaEventoRetorno cancelaNotaPorSubstituicao(final String chave, final String numeroProtocolo, final String motivo, final String versaoAplicativoAutorizador, final String chaveSubstituta) throws Exception {
+        return this.wsCancelamento.cancelaNotaPorSubstituicao(chave, numeroProtocolo, motivo, versaoAplicativoAutorizador, chaveSubstituta);
     }
 
     /**
@@ -426,5 +450,196 @@ public class WSFacade {
      */
     public NFEnviaEventoEpecRetorno enviaEpecAssinado(final String epecAssinadoXml) throws Exception {
         return this.wsEpec.enviaEpecAssinado(epecAssinadoXml);
+    }
+
+    public NFEnviaEventoRetorno enviaAtualizacaoDataPrevisaoEntrega(final String chaveAcesso, final LocalDate dataPrevisaoEntrega, final DFUnidadeFederativa ufAutorEvento, final NFEventoTipoAutor tpAutorEvento, final int numeroSequencialEvento) throws Exception {
+        return this.wsAtualizacaoDataPrevisaoEntrega.atualizaDataPrevisaoEntrega(chaveAcesso, dataPrevisaoEntrega, ufAutorEvento, tpAutorEvento, numeroSequencialEvento);
+    }
+
+    public NFEnviaEventoRetorno aceiteDebitoApuracao(final String chaveAcesso, final int indAceitacao, final DFUnidadeFederativa ufEmitenteEvento, final int numeroSequencialEvento) throws Exception {
+        return this.wsAceiteDebitoAPuracao.aceiteDebitoApuracao(chaveAcesso, indAceitacao, ufEmitenteEvento, numeroSequencialEvento);
+    }
+
+    public NFEnviaEventoRetorno cancelamentoEvento(final String chaveAcesso, final String codigoEventoAutorizado, final String numeroProtocoloEvento, final int numeroSequencialEventoCancelar, final DFUnidadeFederativa ufEmitenteEvento) throws Exception {
+        return this.wsCancelametoEvento.cancelamentoEvento(chaveAcesso, codigoEventoAutorizado, numeroProtocoloEvento, numeroSequencialEventoCancelar, ufEmitenteEvento);
+    }
+
+    /**
+     * Gera XML e faz envio do evento de informação de efetivo pagamento integral para liberar credito presumido do
+     * adquirente.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param ufEmitenteEvento UF do emitente do evento
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     *
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaInformacaoEfetivoPagamentoIntegral(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento, final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsInfoEfetPagIntegral
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+
+    /**
+     * Gera XML e faz envio do evento de solicitação de apropriação de crédito presumido.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param gruposCreditoPresumido Lista de grupos do crédito presumido
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaSolicitacaoApropriacaoCreditoPresumido(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento,
+            final List<NFDetGrupoCreditoPresumido> gruposCreditoPresumido, final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsSolicitacaoApropriacaoCreditoPresumido
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, gruposCreditoPresumido, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+    /**
+     * Gera XML e faz envio do evento de Perecimento, perda, roubo ou furto durante o transporte contratado pelo adquirente.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param gruposPerecimento Lista de grupos de perecimento, perda, roubo ou furto
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaPerdaRouboTransporteAdquirente(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento,
+            final List<NFDetGrupoPerecimento> gruposPerecimento, final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsRouboTransporteAdquirente
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, gruposPerecimento, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+
+    /**
+     * Gera XML e faz envio do evento de Perecimento, perda, roubo ou furto durante o transporte contratado pelo fornecedor.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param gruposPerecimento Lista de grupos de perecimento, perda, roubo ou furto
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaPerdaRouboTransporteFornecedor(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento,
+            final List<NFDetGrupoPerecimentoFornecedor> gruposPerecimento, final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsRouboTransporteFornecedor
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, gruposPerecimento, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+
+    /**
+     * Gera XML e faz envio do evento de solicitação de apropriação de crédito combustível
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param grupoConsumoCombustivel Lista de grupos de consumo de combustível
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaSolicitacaoApropriacaoCreditoCombustivel(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento,
+            final List<NFDetGrupoConsumoCombustivel> grupoConsumoCombustivel, final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsSolicitacaoApropriacaoCreditoCombustivel
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, grupoConsumoCombustivel, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+
+    /**
+     * Gera XML e faz envio do evento de Solicitação de Apropriação de Crédito para bens e serviços que dependem de atividade do adquirente Destinatário
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param gruposCredito Lista de grupos de grupo de crédito
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaSolicitacaoApropriacaoCreditoBensAtividadeAdquirente(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento,
+            final List<NFDetGrupoCredito> gruposCredito, final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsSolicitacaoApropriacaoCreditoBensAtdAdquirinte
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, gruposCredito, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+    /**
+     * Gera XML e faz envio do evento de Fornecimento não realizado com pagamento antecipado.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param gruposItemNaoFornecedo Lista de grupos de grupo de itens não fornecidos
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaNaoFornecimentoPagamentoAntecipado(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento,
+            final List<NFDetGrupoItemNaoFornecido> gruposItemNaoFornecedo, final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsNaoFornecimentoPagamentoAntecipado
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, gruposItemNaoFornecedo, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+
+    /**
+     * Gera XML e faz envio do evento de Destinação de itens para consumo pessoal.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param grupoItensConsumo Lista de grupos de grupo de itens para consumo pessoal
+     * @param numeroSequencialEvento número sequencial do evento
+     * @param tpAutorEvento tipo do autor do evento (emitente ou destinatario)
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaDestinacaoItemConsumoPessoal(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento, final List<NFDetGrupoConsumo> grupoItensConsumo,
+            final int numeroSequencialEvento, final NFEventoTipoAutor tpAutorEvento
+    ) throws Exception {
+        return this.wsDestinacaoItemConsumoPessoal
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, grupoItensConsumo, numeroSequencialEvento, tpAutorEvento)
+                .gerarEnviarEvento();
+    }
+
+    /**
+     * Gera XML e faz envio do evento de Imobilizacao de item.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param gruposImobilizacao Lista de grupos de grupo de itens imobilizacao
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaImobilizacaoItem(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento, final List<NFDetGrupoImobilizacao> gruposImobilizacao,
+            final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsImobilizacaoItem
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, gruposImobilizacao, numeroSequencialEvento)
+                .gerarEnviarEvento();
+    }
+    /**
+     * Gera XML e faz envio do evento de Impotação em ALC/ZFM não convertida em isenção.
+     *
+     * @param chaveAcesso chave de acesso da NF
+     * @param gruposImobilizacao Lista de grupos de grupo de itens consumo em ALC/ZFM não convertida em isenção
+     * @param numeroSequencialEvento número sequencial do evento
+     * @return {@link NFEnviaEventoRetorno} dados do evento retornado pelo webservice
+     * @throws Exception
+     */
+    public NFEnviaEventoRetorno enviaImportacaoALCZFMNaoConvertidaEmIsencao(
+            final String chaveAcesso, final DFUnidadeFederativa ufEmitenteEvento, final List<NFDetGrupoConsumoZFM> gruposImobilizacao,
+            final int numeroSequencialEvento
+    ) throws Exception {
+        return this.wsImportacaoALCZFMNaoConvertidaIsencao
+                .adicionarDadosEvento(chaveAcesso, ufEmitenteEvento, gruposImobilizacao, numeroSequencialEvento)
+                .gerarEnviarEvento();
     }
 }
