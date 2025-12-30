@@ -1,0 +1,75 @@
+Guia Rápido: Verificando e Sincronizando seu Fork da Fincatto NFe
+==================================================================
+
+Este documento explica como usar o script `aplicar_patches_git_nfe.sh` para gerenciar a sincronização do seu fork privado (`nfe-fincatto-fork`) com o repositório original (`fincatto/nfe`). Ele respeita seu fluxo de trabalho de sincronização via GitHub.
+
+**O que este script faz?**
+O script `aplicar_patches_git_nfe.sh` realiza as seguintes verificações:
+1.  **Configura o 'upstream' (repositório original):** Adiciona `fincatto/nfe.git` como um remote chamado `upstream` (se ainda não existir).
+2.  **Busca atualizações:** Baixa as informações mais recentes do seu fork (`origin`) e do repositório original (`upstream`).
+3.  **Compara seu fork no GitHub com o original:** Verifica se a sua branch de trabalho remota *atual* (detectada automaticamente) está atrasada em relação à `master` do repositório original da Fincatto. Isso indica se você precisa usar o botão 'Sync fork' no GitHub.
+4.  **Compara sua branch local com seu fork no GitHub:** Verifica se sua branch de trabalho local *atual* está sincronizada com a versão remota dela no seu próprio fork.
+5.  **Verifica configurações Java/XMLSec no pom.xml:** Confirma se as versões `java.version` e `xmlsec` no `pom.xml` estão configuradas como esperado para Java 8.
+
+**Como usar?**
+1.  **Abra o terminal** e navegue até o diretório raiz do seu projeto `nfe-fincatto-fork`:
+    ```bash
+    cd ~/Dev/Projects/NetBeansProjects/nfe-fincatto-fork
+    ```
+
+2.  **Torne o script executável** (se ainda não for):
+    ```bash
+    chmod +x aplicar_patches_git_nfe.sh
+    ```
+
+3.  **Execute o script:**
+    ```bash
+    ./aplicar_patches_git_nfe.sh
+    ```
+    *Observação: Na primeira vez, o script irá configurar o repositório original (chamado de 'upstream') para você. Isso é normal.*
+
+**Interpretando os Resultados e Ações Recomendadas:**
+
+*   **--- Status do seu Fork no GitHub (origin/SUA_BRANCH_ATUAL) vs. Fincatto Original (upstream/master) ---**
+    *   **⚠️ Seu fork no GitHub está ATRÁS...**
+        *   **Significado:** O repositório original da Fincatto (`fincatto/nfe:master`) tem novas atualizações que seu fork no GitHub ainda não possui.
+        *   **Ação:** Vá para a página do seu fork no GitHub e clique no botão **'Sync fork'** para incorporar essas alterações. (Você não deve fazer `git pull upstream master` diretamente na sua máquina local com este fluxo).
+
+    *   **🎉 Seu fork no GitHub está sincronizado...**
+        *   **Significado:** Seu fork no GitHub já possui todas as atualizações do repositório original.
+        *   **Ação:** Nenhuma ação necessária nesta etapa.
+
+*   **--- Status da sua Branch Local (SUA_BRANCH_ATUAL) vs. seu Fork no GitHub (origin/SUA_BRANCH_ATUAL) ---**
+    *   **⚠️ Sua branch local está ATRÁS...**
+        *   **Significado:** A sua branch de trabalho local (detectada automaticamente) não tem as últimas alterações que estão no seu próprio fork no GitHub (que você pode ter puxado via GitHub Desktop ou após um 'Sync fork').
+        *   **Ação:** Para atualizar sua branch local, execute:
+            ```bash
+            git pull origin SUA_BRANCH_ATUAL
+            # Ou use a função 'Fetch Origin' do GitHub Desktop.
+            ```
+
+    *   **⬆️ Sua branch local tem X commit(s) que não foram enviados...**
+        *   **Significado:** Você fez commits localmente que ainda não foram enviados para o seu fork no GitHub.
+        *   **Ação:** Para enviar suas alterações, execute:
+            ```bash
+            git push origin SUA_BRANCH_ATUAL
+            # Ou use a função 'Push Origin' do GitHub Desktop.
+            ```
+
+    *   **🎉 Sua branch local está sincronizada...**
+        *   **Significado:** Sua branch local está totalmente em dia com a sua branch remota no GitHub.
+        *   **Ação:** Nenhuma ação necessária nesta etapa.
+
+*   **Verificação de configuração Java e xmlsec no pom.xml:**
+    *   Este trecho informará se as configurações de versão Java e `xmlsec` no seu `pom.xml` correspondem ao esperado para o Java 8 (e `xmlsec:3.0.6` ou `2.3.4`).
+
+**Fluxo de Trabalho Recomendado:**
+1.  Sempre que quiser atualizar, comece executando: `./aplicar_patches_git_nfe.sh`
+2.  Se o script indicar que seu **fork no GitHub está ATRÁS do original**, vá ao GitHub e use o botão **'Sync fork'**.
+3.  Em seguida, execute novamente `./aplicar_patches_git_nfe.sh` e, se sua **branch local estiver ATRÁS do seu fork no GitHub**, faça um `git pull origin SUA_BRANCH_ATUAL` (ou use o GitHub Desktop).
+4.  Após qualquer atualização ou alteração no `nfe-fincatto-fork`, **sempre compile e instale a biblioteca localmente** para que o `ipack-git` use a versão correta:
+    ```bash
+    mvn clean install -DskipTests
+    ```
+
+Este fluxo garante que você mantenha o controle sobre as atualizações e a compatibilidade do Java.
