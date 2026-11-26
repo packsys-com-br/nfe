@@ -4,6 +4,22 @@
 # repositório original 'fincatto/nfe' e automatizar a atualização de versão:
 #
 # 1. Detecta a última versão publicada pela Fincatto (tags do upstream).
+#    - Lista os commits entre a versão local e a última versão publicada
+#      (é exatamente o que entra no merge; commits automáticos de release
+#      do maven-release-plugin são ocultados).
+#    - Lista também, apenas para informação, os commits que já estão no
+#      upstream/master mas ainda NÃO saíram em nenhuma versão publicada
+#      (por isso o GitHub pode mostrar PRs mais novos que a última tag).
+#      Esses commits não entram no merge; virão na próxima versão.
+#      O script recomenda aguardar a versão publicada e mostra como
+#      antecipá-los com 'git cherry-pick' em caso de prazo legal, explicando
+#      por que não é o ideal (commit duplicado -> conflitos no próximo merge,
+#      código ainda sem release oficial, versão do pom.xml que não
+#      corresponde ao código real).
+#    - Mostra a quantidade e a lista de Pull Requests abertos no repositório
+#      original (API pública do GitHub via curl + jq, sem login). São propostas
+#      ainda em análise: não estão nem no master e podem mudar ou ser recusadas.
+#      Sem conexão ou com limite da API atingido, apenas avisa e segue.
 # 2. Se houver versão nova, pergunta se deseja atualizar. Ao confirmar:
 #    - Cria a branch nfe_XXXX (ex: 5.0.64 -> nfe_5064) a partir da branch atual.
 #    - Faz o merge da tag da nova versão.
@@ -12,11 +28,26 @@
 #        * pom.xml -> aceita o do upstream e reaplica os patches locais
 #          (java.version e xmlsec, configuráveis abaixo).
 #    - Oferece o push da branch (substitui o botão 'Sync Fork' do GitHub).
-#    - Oferece preparar o projeto consumidor (PROJETO_DIR): cria a mesma
-#      branch nfe_XXXX e atualiza a propriedade <nfe.version> no pom.xml.
+#    - Oferece preparar os projetos consumidores da biblioteca, configurados
+#      na lista PROJETOS_DIRS (hoje: ipack-git e bwWeb_aws-git):
+#        * exibe um menu numerado com os projetos e a branch atual de cada um
+#          (0 ou Enter vazio = nenhum / encerrar);
+#        * no projeto escolhido, cria (ou muda para) a mesma branch nfe_XXXX,
+#          a partir da branch atual DAQUELE projeto, e atualiza a propriedade
+#          <nfe.version> no pom.xml (sem commit);
+#        * em seguida pergunta "Deseja aplicar para outro projeto? (s/N)";
+#          com 's' o menu volta, marcando os já preparados com ✔;
+#        * ao final, avisa quais projetos ficaram sem preparar.
 # 3. Verifica java/xmlsec no pom.xml e o status de sincronização das branches.
 #
-# Passos que continuam manuais: compilar os dois projetos na IDE e testar as NF-es.
+# Antes de rodar: deixe cada projeto consumidor na branch base correta, pois a
+# branch nfe_XXXX nasce da branch atual de cada repositório (fork incluído).
+# Para incluir outro projeto consumidor, adicione o caminho em PROJETOS_DIRS.
+#
+# Passos que continuam manuais: compilar o fork e os projetos consumidores na
+# IDE, testar a emissão das NF-es e fazer commit/push nos projetos consumidores.
+#
+# Uso: ./aplicar_patches_git_nfe.sh   (em terminal interativo, na raiz do fork)
 #
 
 set -e
@@ -30,9 +61,16 @@ UPSTREAM_BRANCH="master"
 LOCAL_JAVA_VERSION="1.8"
 LOCAL_XMLSEC_VERSION="3.0.6"
 
-# Projeto consumidor da biblioteca (recebe branch nova e atualização do <nfe.version>)
-PROJETO_DIR="/Users/ericgravescamollez/Dev/Projects/NetBeansProjects/ipack-git"
+# Projetos consumidores da biblioteca (recebem branch nova e atualização do <nfe.version>).
+# Para incluir outro projeto, basta adicionar o caminho nesta lista.
+PROJETOS_DIRS=(
+    "/Users/ericgravescamollez/Dev/Projects/NetBeansProjects/ipack-git"
+    "/Users/ericgravescamollez/Dev/Projects/NetBeansProjects/bwWeb_aws-git"
+)
 PROJETO_NFE_PROPERTY="nfe.version"
+
+# Preenchido durante a execução com os projetos efetivamente preparados
+PROJETOS_PREPARADOS=()
 
 # --- Cores para o output ---
 COLOR_GREEN='\033[0;32m'
@@ -66,6 +104,8 @@ check_latest_nfe_version() {
 
     if [[ "$LOCAL_VERSION_CLEAN" == "$LATEST_TAG" ]]; then
         echo -e "  - ${COLOR_GREEN}🎉 Você está na última versão da NF-e.${COLOR_RESET}"
+        show_unreleased_changes
+        show_open_pull_requests
     else
         NEWEST=$(printf '%s\n%s\n' "$LOCAL_VERSION_CLEAN" "$LATEST_TAG" | sort -V | tail -n1)
         if [[ "$NEWEST" == "$LATEST_TAG" ]]; then
@@ -104,38 +144,127 @@ resolve_merge_conflicts() {
     return 0
 }
 
-update_consumer_project() {
-    if [[ ! -d "${PROJETO_DIR}/.git" ]]; then
-        return
+# Prepara UM projeto consumidor: cria/muda para a branch nfe_XXXX e atualiza o <nfe.version>.
+# Retorna 1 (sem abortar o script) se algo impedir a preparação.
+prepare_consumer_project() {
+    local DIR="$1"
+    local NOME
+    NOME=$(basename "${DIR}")
+
+    if [[ ! -d "${DIR}/.git" ]]; then
+        echo -e "  - ${COLOR_RED}'${DIR}' não é um repositório git. Projeto ignorado.${COLOR_RESET}"
+        return 1
     fi
-    PROJETO_NOME=$(basename "${PROJETO_DIR}")
+    if [[ ! -f "${DIR}/pom.xml" ]] || ! grep -q "<${PROJETO_NFE_PROPERTY}>" "${DIR}/pom.xml"; then
+        echo -e "  - ${COLOR_RED}pom.xml de '${NOME}' não possui a propriedade <${PROJETO_NFE_PROPERTY}>. Projeto ignorado.${COLOR_RESET}"
+        return 1
+    fi
 
     echo ""
-    read -r -p "  Deseja preparar também o projeto '${PROJETO_NOME}' (criar branch '${NEW_BRANCH}' e atualizar <${PROJETO_NFE_PROPERTY}> para ${LATEST_TAG})? (s/N) " RESPOSTA_PROJETO
-    if [[ ! "$RESPOSTA_PROJETO" =~ ^[SsYy]$ ]]; then
-        echo -e "  - ${COLOR_YELLOW}Projeto '${PROJETO_NOME}' não alterado. Lembre-se de criar a branch e atualizar o pom.xml manualmente.${COLOR_RESET}"
-        return
-    fi
-
-    if git -C "${PROJETO_DIR}" show-ref --verify --quiet "refs/heads/${NEW_BRANCH}"; then
-        echo -e "  - ${COLOR_YELLOW}A branch '${NEW_BRANCH}' já existe em '${PROJETO_NOME}'. Mudando para ela...${COLOR_RESET}"
-        git -C "${PROJETO_DIR}" checkout --quiet "${NEW_BRANCH}"
+    echo -e "${COLOR_BLUE}  Preparando '${NOME}'...${COLOR_RESET}"
+    if git -C "${DIR}" show-ref --verify --quiet "refs/heads/${NEW_BRANCH}"; then
+        echo -e "  - ${COLOR_YELLOW}A branch '${NEW_BRANCH}' já existe em '${NOME}'. Mudando para ela...${COLOR_RESET}"
+        if ! git -C "${DIR}" checkout --quiet "${NEW_BRANCH}"; then
+            echo -e "  - ${COLOR_RED}Não foi possível mudar para a branch '${NEW_BRANCH}' em '${NOME}' (alterações pendentes?).${COLOR_RESET}"
+            return 1
+        fi
     else
-        echo "  - Criando a branch '${NEW_BRANCH}' em '${PROJETO_NOME}' (a partir de $(git -C "${PROJETO_DIR}" rev-parse --abbrev-ref HEAD))..."
-        git -C "${PROJETO_DIR}" checkout --quiet -b "${NEW_BRANCH}"
+        echo "  - Criando a branch '${NEW_BRANCH}' em '${NOME}' (a partir de $(git -C "${DIR}" rev-parse --abbrev-ref HEAD))..."
+        if ! git -C "${DIR}" checkout --quiet -b "${NEW_BRANCH}"; then
+            echo -e "  - ${COLOR_RED}Não foi possível criar a branch '${NEW_BRANCH}' em '${NOME}'.${COLOR_RESET}"
+            return 1
+        fi
     fi
 
-    sed -i '' -E "s|<${PROJETO_NFE_PROPERTY}>[^<]*</${PROJETO_NFE_PROPERTY}>|<${PROJETO_NFE_PROPERTY}>${LATEST_TAG}</${PROJETO_NFE_PROPERTY}>|" "${PROJETO_DIR}/pom.xml"
-    NOVA_PROP=$(grep -o "<${PROJETO_NFE_PROPERTY}>[^<]*</${PROJETO_NFE_PROPERTY}>" "${PROJETO_DIR}/pom.xml")
-    echo -e "  - ${COLOR_GREEN}pom.xml de '${PROJETO_NOME}' atualizado: ${NOVA_PROP}${COLOR_RESET}"
+    LC_ALL=C sed -i '' -E "s|<${PROJETO_NFE_PROPERTY}>[^<]*</${PROJETO_NFE_PROPERTY}>|<${PROJETO_NFE_PROPERTY}>${LATEST_TAG}</${PROJETO_NFE_PROPERTY}>|" "${DIR}/pom.xml"
+    NOVA_PROP=$(grep -o "<${PROJETO_NFE_PROPERTY}>[^<]*</${PROJETO_NFE_PROPERTY}>" "${DIR}/pom.xml" | sort -u | tr '\n' ' ')
+    echo -e "  - ${COLOR_GREEN}pom.xml de '${NOME}' atualizado: ${NOVA_PROP}${COLOR_RESET}"
     echo "    (Alteração NÃO commitada — revise na IDE antes de commitar.)"
+    PROJETOS_PREPARADOS+=("${NOME}")
+    return 0
+}
+
+# Menu: escolhe o projeto consumidor a preparar e, ao final de cada um,
+# pergunta se deseja aplicar em outro projeto.
+update_consumer_projects() {
+    local TOTAL=${#PROJETOS_DIRS[@]}
+    local FEITO=()
+    local I ESCOLHA RESPOSTA_OUTRO RESTANTES DIR NOME MARCA
+
+    [[ "$TOTAL" -eq 0 ]] && return
+
+    while true; do
+        echo ""
+        echo -e "${COLOR_BLUE}  --- Projetos consumidores (branch '${NEW_BRANCH}', <${PROJETO_NFE_PROPERTY}> ${LATEST_TAG}) ---${COLOR_RESET}"
+        for ((I = 0; I < TOTAL; I++)); do
+            DIR="${PROJETOS_DIRS[$I]}"
+            NOME=$(basename "${DIR}")
+            if [[ "${FEITO[$I]}" == "1" ]]; then
+                MARCA="${COLOR_GREEN}✔ já preparado${COLOR_RESET}"
+            elif [[ -d "${DIR}/.git" ]]; then
+                MARCA="(branch atual: $(git -C "${DIR}" rev-parse --abbrev-ref HEAD))"
+            else
+                MARCA="${COLOR_RED}(repositório não encontrado)${COLOR_RESET}"
+            fi
+            echo -e "    $((I + 1))) ${NOME}  ${MARCA}"
+        done
+        echo "    0) Nenhum / encerrar"
+        read -r -p "  Qual projeto deseja preparar? " ESCOLHA
+
+        if [[ "$ESCOLHA" == "0" || -z "$ESCOLHA" ]]; then
+            break
+        fi
+        if [[ ! "$ESCOLHA" =~ ^[0-9]+$ ]] || (( ESCOLHA < 1 || ESCOLHA > TOTAL )); then
+            echo -e "  - ${COLOR_RED}Opção inválida: '${ESCOLHA}'.${COLOR_RESET}"
+            continue
+        fi
+        I=$((ESCOLHA - 1))
+        if [[ "${FEITO[$I]}" == "1" ]]; then
+            echo -e "  - ${COLOR_YELLOW}'$(basename "${PROJETOS_DIRS[$I]}")' já foi preparado nesta execução.${COLOR_RESET}"
+            continue
+        fi
+
+        if prepare_consumer_project "${PROJETOS_DIRS[$I]}"; then
+            FEITO[$I]=1
+        fi
+
+        # Conta quantos projetos ainda não foram preparados
+        RESTANTES=0
+        for ((I = 0; I < TOTAL; I++)); do
+            [[ "${FEITO[$I]}" == "1" ]] || RESTANTES=$((RESTANTES + 1))
+        done
+        if [[ "$RESTANTES" -eq 0 ]]; then
+            echo -e "  - ${COLOR_GREEN}Todos os projetos consumidores foram preparados.${COLOR_RESET}"
+            break
+        fi
+
+        echo ""
+        read -r -p "  Deseja aplicar para outro projeto? (s/N) " RESPOSTA_OUTRO
+        if [[ ! "$RESPOSTA_OUTRO" =~ ^[SsYy]$ ]]; then
+            break
+        fi
+    done
+
+    # Lembra dos projetos que ficaram sem preparar
+    for ((I = 0; I < TOTAL; I++)); do
+        if [[ "${FEITO[$I]}" != "1" ]]; then
+            echo -e "  - ${COLOR_YELLOW}Projeto '$(basename "${PROJETOS_DIRS[$I]}")' não alterado. Lembre-se de criar a branch '${NEW_BRANCH}' e atualizar o pom.xml manualmente.${COLOR_RESET}"
+        fi
+    done
 }
 
 show_final_reminder() {
+    local LISTA
+    if [[ ${#PROJETOS_PREPARADOS[@]} -gt 0 ]]; then
+        LISTA=$(printf '%s, ' "${PROJETOS_PREPARADOS[@]}")
+        LISTA="${LISTA%, }"
+    else
+        LISTA="nenhum projeto consumidor foi preparado"
+    fi
     echo ""
     echo -e "${COLOR_BLUE}--- Próximos passos (manuais) ---${COLOR_RESET}"
     echo "  1. Compile o projeto NF-e (fork) na IDE."
-    echo "  2. Compile o seu projeto ($(basename "${PROJETO_DIR}"))."
+    echo "  2. Compile o(s) projeto(s) consumidor(es): ${LISTA}."
     echo "  3. Teste a emissão das NF-es antes de fazer commit/push definitivo."
 }
 
@@ -153,6 +282,77 @@ show_available_changes() {
         | sed 's/^/    /'
     TOTAL_COMMITS=$(git rev-list --count "v${LOCAL_VERSION_CLEAN}..v${LATEST_TAG}")
     echo -e "    ${COLOR_YELLOW}(${TOTAL_COMMITS} commits no total; commits automáticos de release ocultados)${COLOR_RESET}"
+    show_unreleased_changes
+    show_open_pull_requests
+}
+
+show_unreleased_changes() {
+    # Lista (apenas para informação) os commits que já estão no master do upstream
+    # mas ainda não saíram em nenhuma release (posteriores à última tag).
+    # Eles NÃO entram no merge — só virão quando a Fincatto publicar a próxima versão.
+    local REF="${UPSTREAM_REMOTE}/${UPSTREAM_BRANCH}"
+    if ! git rev-parse -q --verify "v${LATEST_TAG}" > /dev/null 2>&1 || \
+       ! git rev-parse -q --verify "${REF}" > /dev/null 2>&1; then
+        return
+    fi
+    local PENDENTES
+    PENDENTES=$(git log --oneline --no-decorate --no-merges "v${LATEST_TAG}..${REF}" | grep -vE '\[maven-release-plugin\]' || true)
+    if [[ -z "$PENDENTES" ]]; then
+        return
+    fi
+    echo ""
+    echo -e "${COLOR_BLUE}  --- Já no ${REF}, ainda sem release (posteriores à v${LATEST_TAG}) ---${COLOR_RESET}"
+    echo "$PENDENTES" | sed 's/^/    /'
+    echo -e "    ${COLOR_YELLOW}(Não entram no merge; virão na próxima versão publicada pela Fincatto.)${COLOR_RESET}"
+
+    # Orientação sobre antecipar esses commits via cherry-pick
+    local EXEMPLO_HASH
+    EXEMPLO_HASH=$(echo "$PENDENTES" | head -n1 | awk '{print $1}')
+    echo ""
+    echo -e "    ${COLOR_YELLOW}Recomendação: aguarde a próxima versão publicada antes de trazer esses commits.${COLOR_RESET}"
+    echo "    Se precisar de algum deles antes (ex.: prazo legal de uma Nota Técnica), é possível"
+    echo "    aplicá-lo na branch nova com cherry-pick:"
+    echo "        git cherry-pick ${EXEMPLO_HASH}"
+    echo "    Por que não é o ideal:"
+    echo "      - O commit fica duplicado (hash diferente do upstream); quando a próxima versão"
+    echo "        sair, o merge da tag pode gerar conflitos nesses mesmos arquivos."
+    echo "      - O código ainda não passou pelo processo de release da Fincatto e pode ser"
+    echo "        ajustado/corrigido antes da publicação."
+    echo "      - A versão no pom.xml continuaria ${LATEST_TAG}, mas com código diferente da"
+    echo "        ${LATEST_TAG} oficial, dificultando saber o que está realmente em produção."
+}
+
+show_open_pull_requests() {
+    # Lista os Pull Requests abertos no repositório original (API pública do GitHub,
+    # sem autenticação). São propostas ainda em análise: não estão nem no master.
+    if ! command -v curl > /dev/null 2>&1 || ! command -v jq > /dev/null 2>&1; then
+        echo -e "    ${COLOR_YELLOW}(curl/jq não encontrados — não foi possível listar os Pull Requests abertos.)${COLOR_RESET}"
+        return
+    fi
+    local REPO_PATH API_JSON TOTAL_PRS
+    REPO_PATH=$(echo "${UPSTREAM_REPO_URL}" | sed -E 's|^https://github.com/||; s|\.git$||')
+
+    # -L: o repositório pode ter sido transferido (ex.: fincatto/nfe -> wmixvideo/nfe)
+    API_JSON=$(curl -sfL --max-time 15 -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${REPO_PATH}/pulls?state=open&per_page=100") || API_JSON=""
+    if [[ -z "$API_JSON" ]] || ! TOTAL_PRS=$(echo "$API_JSON" | jq 'if type == "array" then length else error end' 2>/dev/null); then
+        echo ""
+        echo -e "    ${COLOR_YELLOW}(Não foi possível consultar os Pull Requests abertos no GitHub — sem conexão ou limite da API atingido.)${COLOR_RESET}"
+        return
+    fi
+
+    echo ""
+    if [[ "$TOTAL_PRS" -eq 0 ]]; then
+        echo -e "${COLOR_BLUE}  --- Pull Requests abertos em ${REPO_PATH}: nenhum ---${COLOR_RESET}"
+        return
+    fi
+    # Nome atual do repositório (após eventual transferência), ex.: wmixvideo/nfe
+    REPO_PATH=$(echo "$API_JSON" | jq -r '.[0].base.repo.full_name // empty')
+    [[ -z "$REPO_PATH" ]] && REPO_PATH=$(echo "${UPSTREAM_REPO_URL}" | sed -E 's|^https://github.com/||; s|\.git$||')
+    [[ "$TOTAL_PRS" -ge 100 ]] && TOTAL_PRS="100+"
+    echo -e "${COLOR_BLUE}  --- Pull Requests abertos em ${REPO_PATH}: ${TOTAL_PRS} ---${COLOR_RESET}"
+    echo "$API_JSON" | jq -r '.[] | "    #\(.number) \(.title)  (\(.user.login), \(.created_at[:10]))"'
+    echo -e "    ${COLOR_YELLOW}(Ainda em análise pela Fincatto: não estão no master e podem ser alterados ou recusados.)${COLOR_RESET}"
 }
 
 ask_to_update() {
@@ -202,8 +402,8 @@ ask_to_update() {
                 echo -e "  - ${COLOR_YELLOW}Push adiado. Envie depois com: git push -u origin ${NEW_BRANCH}${COLOR_RESET}"
             fi
 
-            # Prepara o projeto consumidor (branch + <nfe.version> no pom.xml)
-            update_consumer_project
+            # Prepara os projetos consumidores (menu: branch + <nfe.version> no pom.xml)
+            update_consumer_projects
             show_final_reminder
         else
             echo -e "  - ${COLOR_RED}⚠️ O merge encontrou conflitos que o script não sabe resolver sozinho.${COLOR_RESET}"
